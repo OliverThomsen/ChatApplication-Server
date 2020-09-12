@@ -115,6 +115,7 @@ public class ClientEngine extends GenericThreadedComponent
         /** Send our username to the server... */
         try
         {
+            //TODO: encrypt
             socketWriter.writeObject( configManager.getValue( "Client.Username" ) );
         }
         catch ( IOException ioe )
@@ -144,6 +145,8 @@ public class ClientEngine extends GenericThreadedComponent
      */
     public void sendMessage( ChatMessage msg )
     {
+        //Todo: encrypt
+
         try 
         {
             socketWriter.writeObject(msg);

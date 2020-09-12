@@ -25,6 +25,7 @@ public class ListenFromServer extends Thread
                     try
                     {
                         String msg = (String) sInput.readObject();
+                        //TODO: decrypt
                     
                         if(msg.contains( "#" ))
                         {

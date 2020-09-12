@@ -143,6 +143,7 @@ public class SocketConnectionHandler implements Runnable
             socketReader = new ObjectInputStream( handleConnection.getInputStream() );
             
             /** Read the username */
+            //TODO: decrypt
             userName = ( String )socketReader.readObject();
             SocketServerGUI.getInstance().appendEvent( userName + " just connected at port number: " + handleConnection.getPort() + "\n" );
 
@@ -318,6 +319,7 @@ public class SocketConnectionHandler implements Runnable
             try
             {  
                 /** Wait until there is something in the stream to be read... */
+                //TODO: decrypt
                 cm = ( ChatMessage )socketReader.readObject();
                 
                 String message = cm.getMessage();
@@ -396,6 +398,7 @@ public class SocketConnectionHandler implements Runnable
            // write the message to the stream
            try 
            {
+               //TODO: encrypt
                socketWriter.writeObject(msg);
            }
            // if an error occurs, do not abort just inform the user
