@@ -6,8 +6,17 @@
 package chatapplication_server.components.ClientSocketEngine;
 
 import chatapplication_server.ComponentManager;
+
+import javax.crypto.BadPaddingException;
+import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
 import java.io.IOException;
 import java.io.ObjectInputStream;
+import java.security.Key;
+
+import static chatapplication_server.components.Encryption.getCipher;
+import static chatapplication_server.components.Helper.hexToByteArray;
+import static chatapplication_server.components.Keys.getClientKey;
 
 /**
  *
@@ -15,6 +24,12 @@ import java.io.ObjectInputStream;
  */
 public class ListenFromServer extends Thread 
 {
+
+    Cipher cipher;
+    public ListenFromServer(Cipher cipher) {
+        this.cipher = cipher;
+    }
+
     public void run()
     {
         while(true) {
@@ -24,9 +39,15 @@ public class ListenFromServer extends Thread
                 {
                     try
                     {
-                        String msg = (String) sInput.readObject();
-                        //TODO: decrypt
-                    
+
+                        /** Decrypt message with client key */
+                        String msgHexEncrypted = (String) sInput.readObject();
+                        System.out.println(msgHexEncrypted);
+                        byte[] msgBytesEncrypted = hexToByteArray(msgHexEncrypted);
+                        byte[] msgBytes = cipher.doFinal(msgBytesEncrypted);
+                        String msg = new String(msgBytes);
+
+
                         if(msg.contains( "#" ))
                         {
                             ClientSocketGUI.getInstance().appendPrivateChat(msg + "\n");
@@ -45,6 +66,8 @@ public class ListenFromServer extends Thread
                     {
                         ClientSocketGUI.getInstance().append( "Server has closed the connection: " + cfe.getMessage() );
                         ComponentManager.getInstance().fatalException(cfe);
+                    } catch (Exception e) {
+                        e.printStackTrace();
                     }
                 }
         }

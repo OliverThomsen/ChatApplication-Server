@@ -11,14 +11,31 @@ import chatapplication_server.components.ConfigManager;
 import chatapplication_server.components.ServerSocketEngine.SocketServerEngine;
 import chatapplication_server.components.ServerSocketEngine.SocketServerGUI;
 import chatapplication_server.components.base.GenericThreadedComponent;
+import chatapplication_server.components.base.IComponent;
 import chatapplication_server.exception.ComponentInitException;
 import chatapplication_server.statistics.ServerStatistics;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
+
+import java.io.*;
+import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
 
 import java.net.*;
+import java.security.Key;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.util.Scanner;
+
+import java.security.Security;
+//add the provider package
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.w3c.dom.css.CSSUnknownRule;
+
+import static chatapplication_server.components.Encryption.getCipher;
+import static chatapplication_server.components.Helper.*;
+import static chatapplication_server.components.Keys.SERVER_KEY;
+import static chatapplication_server.components.Keys.getClientKey;
 
 /**
  *
@@ -102,9 +119,13 @@ public class ClientEngine extends GenericThreadedComponent
             /** Set up the stream reader/writer for this socket connection... */
             socketWriter = new ObjectOutputStream( socket.getOutputStream() );
             socketReader = new ObjectInputStream( socket.getInputStream() );
+
+            /** create cipher object for encryption to pass to the ListenFromServer thread */
+            Key clientKey = getClientKey(configManager.getValue("Client.Username"));
+            Cipher cipher = getCipher(Cipher.DECRYPT_MODE, clientKey);
             
-            /** Start the ListeFromServer thread... */
-            new ListenFromServer().start();
+            /** Start the ListenFromServer thread... */
+            new ListenFromServer(cipher).start();
         }
         catch ( IOException ioe )
         {
@@ -145,16 +166,21 @@ public class ClientEngine extends GenericThreadedComponent
      */
     public void sendMessage( ChatMessage msg )
     {
-        //Todo: encrypt
-
-        try 
-        {
-            socketWriter.writeObject(msg);
+        try {
+            /** Encrypt ChatMessage before sending */
+            Key clientKey = getClientKey(configManager.getValue("Client.Username"));
+            Cipher cipher = getCipher(Cipher.ENCRYPT_MODE, clientKey);
+            byte[] msgBytes = convertToBytes(msg);
+            byte[] msgCipher = cipher.doFinal(msgBytes);
+            String msgCipherHex = byteArrayToHex(msgCipher);
+            socketWriter.writeObject(msgCipherHex);
         }
         catch( IOException e ) 
         {
             System.out.println("Aloha");
             display( "Exception writing to server: " + e );
+        } catch (Exception e) {
+            System.out.println(e);
         }
     }
     

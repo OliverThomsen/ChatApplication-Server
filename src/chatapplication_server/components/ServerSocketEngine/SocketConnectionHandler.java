@@ -8,14 +8,19 @@ package chatapplication_server.components.ServerSocketEngine;
 import SocketActionMessages.ChatMessage;
 import chatapplication_server.components.ConfigManager;
 import chatapplication_server.statistics.ServerStatistics;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.OptionalDataException;
-import java.io.StreamCorruptedException;
-import javax.net.ssl.SSLSocket;
+
+import java.io.*;
+import javax.crypto.BadPaddingException;
+import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
 import java.net.*;
+import java.security.Key;
 import java.util.Vector;
+
+import static chatapplication_server.components.Encryption.getCipher;
+import static chatapplication_server.components.Helper.*;
+import static chatapplication_server.components.Keys.SERVER_KEY;
+import static chatapplication_server.components.Keys.getClientKey;
 
 /**
  *
@@ -317,15 +322,17 @@ public class SocketConnectionHandler implements Runnable
         while ( isSocketOpen )
         {    
             try
-            {  
+            {
                 /** Wait until there is something in the stream to be read... */
-                //TODO: decrypt
-                cm = ( ChatMessage )socketReader.readObject();
-                
+                String msgHex = (String) socketReader.readObject();
+                byte[] msgBytesEncrypted = hexToByteArray(msgHex);
+                Cipher cipher = getCipher(Cipher.DECRYPT_MODE, getClientKey(userName));
+                byte[] msgBytes = cipher.doFinal(msgBytesEncrypted);
+                cm = (ChatMessage) convertFromBytes(msgBytes);
                 String message = cm.getMessage();
                 
-                // Switch on the type of message receive
-                switch(cm.getType()) 
+//                 Switch on the type of message receive
+                switch(cm.getType())
                 {
                 case ChatMessage.MESSAGE:
                         SocketServerEngine.getInstance().broadcast(userName + ": " + message);
@@ -373,7 +380,10 @@ public class SocketConnectionHandler implements Runnable
                 
                 /** Change the socket status... */
                 isSocketOpen = false;
-            }            
+                e.printStackTrace();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
     }
     
@@ -399,15 +409,22 @@ public class SocketConnectionHandler implements Runnable
            try 
            {
                //TODO: encrypt
-               socketWriter.writeObject(msg);
+               Key clientKey = getClientKey(userName);
+               Cipher clientCipher = getCipher(Cipher.ENCRYPT_MODE, clientKey);
+               byte[] msgEncrypted = clientCipher.doFinal(msg.getBytes());
+               String msgEncryptedHex = byteArrayToHex(msgEncrypted);
+               System.out.println(msgEncryptedHex);
+               socketWriter.writeObject(msgEncryptedHex);
            }
            // if an error occurs, do not abort just inform the user
            catch( IOException e ) 
            {
                 SocketServerGUI.getInstance().appendEvent("Error sending message to " + userName + "\n");
                 SocketServerGUI.getInstance().appendEvent( e.toString() );
+           } catch (Exception e) {
+               e.printStackTrace();
            }
-           return true;
+       return true;
    }
     
     /**
