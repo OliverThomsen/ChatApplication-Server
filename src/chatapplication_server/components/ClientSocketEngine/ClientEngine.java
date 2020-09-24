@@ -16,26 +16,21 @@ import chatapplication_server.exception.ComponentInitException;
 import chatapplication_server.statistics.ServerStatistics;
 
 import java.io.*;
-import javax.crypto.Cipher;
-import javax.crypto.KeyGenerator;
-import javax.crypto.SecretKey;
+import javax.crypto.*;
+import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
 import java.net.*;
-import java.security.Key;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
+import java.security.*;
 import java.util.Scanner;
 
-import java.security.Security;
 //add the provider package
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.w3c.dom.css.CSSUnknownRule;
 
 import static chatapplication_server.components.Encryption.getCipher;
 import static chatapplication_server.components.Helper.*;
-import static chatapplication_server.components.Keys.SERVER_KEY;
-import static chatapplication_server.components.Keys.getClientKey;
+import static chatapplication_server.components.Keys.*;
 
 /**
  *
@@ -121,18 +116,25 @@ public class ClientEngine extends GenericThreadedComponent
             socketReader = new ObjectInputStream( socket.getInputStream() );
 
             /** create cipher object for encryption to pass to the ListenFromServer thread */
-            Key clientKey = getClientKey(configManager.getValue("Client.Username"));
-            Cipher cipher = getCipher(Cipher.DECRYPT_MODE, clientKey);
+            String username = configManager.getValue("Client.Username");
+            SecretKeySpec clientKey = getClientKey(username);
+//            Cipher cipher = getCipher(Cipher.DECRYPT_MODE, clientKey);
+            Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+//            cipher.init(Cipher.DECRYPT_MODE, clientKey, ivParameterSpec);
             
             /** Start the ListenFromServer thread... */
-            new ListenFromServer(cipher).start();
+            new ListenFromServer(cipher, clientKey, username).start();
         }
         catch ( IOException ioe )
         {
             display( "Exception creating new Input/Output Streams: " + ioe + "\n");
             ComponentManager.getInstance().fatalException(ioe);
+        } catch (NoSuchPaddingException e) {
+            e.printStackTrace();
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
         }
-        
+
         /** Send our username to the server... */
         try
         {
@@ -158,22 +160,52 @@ public class ClientEngine extends GenericThreadedComponent
     {
         ClientSocketGUI.getInstance().append( msg );
     }
-    
+
+
+    /**
+     * Function for apppending hash and Iv vector to msg and converting all three to hex
+     */
+    public String appendHashAndIvToMsg(byte[] msgCipher, SecretKeySpec serverKey, IvParameterSpec IvVector) throws GeneralSecurityException {
+        byte[] hash = calculateHmac(serverKey, msgCipher);
+        byte[] ivTobytearray = IvVector.getIV();
+        String msgCipherHash = byteArrayToHex(hash);
+        String msgCipherHex = byteArrayToHex(msgCipher);
+        String msgCipherIv = byteArrayToHex(ivTobytearray);
+        return msgCipherIv+msgCipherHex+msgCipherHash;
+    }
+
+    /**
+     * Generating a random IV vector
+     */
+
+    public IvParameterSpec generateIV () {
+        byte[] iv = new byte[16];
+        SecureRandom random = new SecureRandom();
+        random.nextBytes(iv);
+        IvParameterSpec ivParameterSpec = new IvParameterSpec(iv);
+        return ivParameterSpec;
+    }
+
     /**
      * Method for sending a message to the server
-     * 
+     *
      * @param msg The message to be sent
      */
+
     public void sendMessage( ChatMessage msg )
     {
+
+        Security.addProvider(new BouncyCastleProvider());
+
         try {
             /** Encrypt ChatMessage before sending */
-            Key clientKey = getClientKey(configManager.getValue("Client.Username"));
-            Cipher cipher = getCipher(Cipher.ENCRYPT_MODE, clientKey);
+            SecretKeySpec clientKey = getClientKey(configManager.getValue("Client.Username"));
+            Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+            IvParameterSpec ivParameterSpec = generateIV();
+            cipher.init(Cipher.ENCRYPT_MODE, clientKey, ivParameterSpec);
             byte[] msgBytes = convertToBytes(msg);
             byte[] msgCipher = cipher.doFinal(msgBytes);
-            String msgCipherHex = byteArrayToHex(msgCipher);
-            socketWriter.writeObject(msgCipherHex);
+            socketWriter.writeObject(appendHashAndIvToMsg(msgCipher, clientKey, ivParameterSpec));
         }
         catch( IOException e ) 
         {
