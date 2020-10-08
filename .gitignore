@@ -1,3 +1,4 @@
 /out
 /.idea
 *.jar
+.DS_Store
