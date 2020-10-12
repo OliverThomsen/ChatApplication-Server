@@ -7,5 +7,10 @@ public class Test {
 
         X509Certificate caCer = keyManager.retrieveCertificate("CA/caroot.cer");
         System.out.println("CA public key: " + caCer.getPublicKey());
+
+        KeyManager.createPkcs10Request("Bob");
+        CertificateAuthority.signCSR("Bob");
+        KeyManager.importCACert("Bob");
+        KeyManager.importSignedCert("Bob");
     }
 }

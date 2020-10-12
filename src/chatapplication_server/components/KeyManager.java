@@ -1,10 +1,11 @@
+package chatapplication_server.components;
+
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.*;
 import java.security.cert.Certificate;
-import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 
@@ -41,7 +42,7 @@ public class KeyManager {
 
         File f = new File(username + "/" + username + "KeyStore.jks");
         while(!f.exists()) {
-            System.out.println("Waiting for: " + f.getName());
+            System.out.println("Waiting for " + f.getName());
             sleep(1000);
         }
 
@@ -65,22 +66,22 @@ public class KeyManager {
 
     public void accessCertificate(String keyStoreName, String keyStorePass, String keyPass, String alias) throws Exception{
         // load information into a keystore
-        KeyStore ks = java.security.KeyStore.getInstance( "JKS" );
-        FileInputStream ksfis = new java.io.FileInputStream( username+"/"+keyStoreName );
-        BufferedInputStream ksbufin = new java.io.BufferedInputStream( ksfis );
+        KeyStore ks = KeyStore.getInstance( "JKS" );
+        FileInputStream ksfis = new FileInputStream( username+"/"+keyStoreName );
+        BufferedInputStream ksbufin = new BufferedInputStream( ksfis );
         ks.load( ksbufin, keyStorePass.toCharArray() );
 
         Certificate cert = ks.getCertificate( alias );
         ByteUtils.saveBytesToFile( username + "/" + alias + ".cer", cert.getEncoded() );
         ByteUtils.saveBytesToFile( username + "/" + alias + ".pubkey", cert.getPublicKey().getEncoded() );
-        PrivateKey privateKey = (java.security.PrivateKey) ks.getKey( alias, keyPass.toCharArray() );
+        PrivateKey privateKey = (PrivateKey) ks.getKey( alias, keyPass.toCharArray() );
         ByteUtils.saveBytesToFile( username + "/" + alias + ".privKey", privateKey.getEncoded() );
         System.out.println( "### generated certificate information for -> " + alias );
         System.out.println( cert );
 
         File f = new File(username + "/" + username + ".cer");
         while(!f.exists()) {
-            System.out.println("Waiting for: " + f.getName());
+            System.out.println("Waiting for " + f.getName());
             sleep(1000);
         }
 
@@ -92,10 +93,12 @@ public class KeyManager {
         String cmd = "keytool -certreq -alias " + username + " " + "-keystore " + pathToUser + username + "KeyStore.jks" + " -file " + pathToUser + username + ".csr" + " " + "-storepass" + " " + "password";
 //        System.out.println(cmd);
         File f = new File(pathToUser + username + ".csr");
+        System.out.println(pathToUser + username + ".csr");
+        System.out.println(cmd);
 
         Runtime.getRuntime().exec(cmd);
         while(!f.exists()) {
-            System.out.println("Waiting for: " + f.getName());
+            System.out.println("Waiting for " + f.getName());
             sleep(1000);
         }
     }

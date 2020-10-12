@@ -6,7 +6,9 @@
 package chatapplication_server.components.ServerSocketEngine;
 
 import chatapplication_server.ComponentManager;
+import chatapplication_server.components.CertificateAuthority;
 import chatapplication_server.components.ConfigManager;
+import chatapplication_server.components.KeyManager;
 import chatapplication_server.components.base.GenericThreadedComponent;
 import chatapplication_server.components.base.IComponent;
 import chatapplication_server.exception.ComponentInitException;
@@ -41,7 +43,12 @@ public class SocketServerEngine extends GenericThreadedComponent
     
     /** Object for printing the secure socket server configuration properties */
     ServerStatistics lotusStat;
-    
+
+    /**
+     * Server keymanager
+     */
+    public KeyManager keyManager;
+
     /** Vector pool for keeping all the ConnectionHandlers in idle state waiting for new socket connections */
     Vector connectionHandlingPool;
 
@@ -128,7 +135,25 @@ public class SocketServerEngine extends GenericThreadedComponent
                 
         /** For printing the configuration properties of the secure socket server */
         lotusStat = new ServerStatistics();
-        
+
+        /** Initialise server keystore and certificate
+         *
+         */
+        try {
+            keyManager = new KeyManager("Server");
+            System.out.println("Server keymanager created");
+            KeyManager.createPkcs10Request("Server");
+            System.out.println("Server csr");
+            CertificateAuthority.signCSR("Server");
+            System.out.println("CA sign csr");
+            KeyManager.importCACert("Server");
+            System.out.println("Import CA cert in server jks");
+            KeyManager.importSignedCert("Server");
+            System.out.println("Import signed cert in server jks");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
         /** Initialize the vector holding information about the connection handlers... */
         connectionHandlingPool = new Vector();
         connHandlerOccp = new Vector();
@@ -181,6 +206,10 @@ public class SocketServerEngine extends GenericThreadedComponent
         ServerSocket s = new ServerSocket( configManager.getValueInt( "Server.PortNumber" ) );
         
         return s;
+    }
+
+    public KeyManager getServerKeyManager() {
+        return keyManager;
     }
     
     /**

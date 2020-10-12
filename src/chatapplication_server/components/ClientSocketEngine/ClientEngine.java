@@ -7,7 +7,9 @@ package chatapplication_server.components.ClientSocketEngine;
 
 import SocketActionMessages.ChatMessage;
 import chatapplication_server.ComponentManager;
+import chatapplication_server.components.CertificateAuthority;
 import chatapplication_server.components.ConfigManager;
+import chatapplication_server.components.KeyManager;
 import chatapplication_server.components.ServerSocketEngine.SocketServerEngine;
 import chatapplication_server.components.ServerSocketEngine.SocketServerGUI;
 import chatapplication_server.components.base.GenericThreadedComponent;
@@ -25,6 +27,7 @@ import java.net.*;
 import java.security.Key;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.security.cert.X509Certificate;
 import java.util.Scanner;
 
 import java.security.Security;
@@ -48,7 +51,12 @@ public class ClientEngine extends GenericThreadedComponent
     
     /** Object for printing the secure socket server configuration properties */
     ServerStatistics lotusStat;
-    
+
+    /** Object to access keystore and certificate
+     *
+     */
+    KeyManager keyManager;
+
     /** Flag indicating whether the Socket Server is running.... */
     boolean isRunning;
     
@@ -97,7 +105,17 @@ public class ClientEngine extends GenericThreadedComponent
                 
         /** For printing the configuration properties of the secure socket server */
         lotusStat = new ServerStatistics();
-        
+
+        /** Initialise keystore and certificate for client user
+         *
+         */
+
+        try {
+            keyManager = new KeyManager(configManager.getValue("Client.Username"));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
         /** Try and connect to the server... */
         try
         {
@@ -112,7 +130,9 @@ public class ClientEngine extends GenericThreadedComponent
         
         /** Print that the connection was accepted */
         display( "Connection accepted: " + socket.getInetAddress() + ":" + socket.getPort() + "\n" );
-        
+
+
+
         /** Create the read/write object streams... */
         try
         {
@@ -138,14 +158,24 @@ public class ClientEngine extends GenericThreadedComponent
         {
             //TODO: encrypt
             socketWriter.writeObject( configManager.getValue( "Client.Username" ) );
+
+            X509Certificate clientCert = keyManager.retrieveCertificate(configManager.getValue("Client.Username") + "/" + configManager.getValue("Client.Username") + ".cer");
+            KeyManager.createPkcs10Request(configManager.getValue("Client.Username"));
+            CertificateAuthority.signCSR(configManager.getValue("Client.Username"));
+            KeyManager.importCACert(configManager.getValue("Client.Username"));
+            KeyManager.importSignedCert(configManager.getValue("Client.Username"));
+
+            socketWriter.writeObject(clientCert);
         }
         catch ( IOException ioe )
         {
             display( "Exception during login: " + ioe );
             shutdown();
             ComponentManager.getInstance().fatalException(ioe);
+        } catch (Exception e) {
+            e.printStackTrace();
         }
-        
+
         super.initialize();
     }
     

@@ -7,7 +7,10 @@ package chatapplication_server.components.ServerSocketEngine;
 
 import SocketActionMessages.ChatMessage;
 import chatapplication_server.components.ConfigManager;
+import chatapplication_server.components.Helper;
+import chatapplication_server.components.KeyManager;
 import chatapplication_server.statistics.ServerStatistics;
+import org.bouncycastle.jcajce.provider.asymmetric.X509;
 
 import java.io.*;
 import javax.crypto.BadPaddingException;
@@ -15,6 +18,10 @@ import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import java.net.*;
 import java.security.Key;
+import javax.security.cert.CertificateException;
+import javax.security.cert.X509Certificate;
+import java.security.KeyStore;
+import java.security.PublicKey;
 import java.util.Vector;
 
 import static chatapplication_server.components.Encryption.getCipher;
@@ -42,7 +49,13 @@ public class SocketConnectionHandler implements Runnable
     
     /** The username of the client that we are handling */
     private String userName;
-    
+
+    /** Client certificate
+     *
+     */
+    private X509Certificate clientCert;
+
+
     /** The only type of message that we will receive */
     private ChatMessage cm;
     
@@ -152,6 +165,20 @@ public class SocketConnectionHandler implements Runnable
             userName = ( String )socketReader.readObject();
             SocketServerGUI.getInstance().appendEvent( userName + " just connected at port number: " + handleConnection.getPort() + "\n" );
 
+            String clientCertString = (String) socketReader.readObject();
+            byte[] clientCertBytes = Helper.convertToBytes(clientCertString);
+            clientCert = X509Certificate.getInstance(clientCertBytes);
+            clientCert.checkValidity();
+
+            FileInputStream is = new FileInputStream("Server/ServerKeyStore.jks");
+            KeyStore keystore = KeyStore.getInstance("Server/ServerKeyStore.jks");
+            keystore.load(is, "password".toCharArray());
+
+            Key CAKey = keystore.getKey("ca", "password".toCharArray());
+            clientCert.verify((PublicKey) CAKey);
+
+            System.out.println(CAKey);
+
             return true;
         }
         catch ( StreamCorruptedException sce )
@@ -207,6 +234,12 @@ public class SocketConnectionHandler implements Runnable
             /** Then shut down... */
             this.stop();
 
+            return false;
+        } catch (CertificateException e) {
+            e.printStackTrace();
+            return false;
+        } catch (Exception e) {
+            e.printStackTrace();
             return false;
         }
     }
