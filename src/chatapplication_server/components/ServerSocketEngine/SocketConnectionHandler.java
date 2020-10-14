@@ -10,43 +10,45 @@ import chatapplication_server.components.ConfigManager;
 import chatapplication_server.components.Helper;
 import chatapplication_server.components.KeyManager;
 import chatapplication_server.statistics.ServerStatistics;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.jcajce.provider.asymmetric.X509;
 
 import java.io.*;
-import javax.crypto.BadPaddingException;
-import javax.crypto.Cipher;
-import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.*;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 import java.net.*;
 import java.security.Key;
 import javax.security.cert.CertificateException;
 import javax.security.cert.X509Certificate;
 import java.security.KeyStore;
 import java.security.PublicKey;
+import java.security.*;
+import java.util.Arrays;
 import java.util.Vector;
 
 import static chatapplication_server.components.Encryption.getCipher;
 import static chatapplication_server.components.Helper.*;
-import static chatapplication_server.components.Keys.SERVER_KEY;
-import static chatapplication_server.components.Keys.getClientKey;
+import static chatapplication_server.components.Keys.*;
 
 /**
  *
  * @author atgianne
  */
-public class SocketConnectionHandler implements Runnable 
+public class SocketConnectionHandler implements Runnable
 {
-     /** Did we receive a signal to shut down */
+    /** Did we receive a signal to shut down */
     protected boolean mustShutdown;
-    
+
     /** Flag for indicating whether we are handling a socket or not */
     protected boolean isSocketOpen;
-    
+
     /** The socket connection that we are handling */
     private Socket handleConnection;
-    
-     /** String identifier of this ConnectionHandler thread (since we have more than 1 in the ConnectionHandling pool) */
+
+    /** String identifier of this ConnectionHandler thread (since we have more than 1 in the ConnectionHandling pool) */
     private String handlerName;
-    
+
     /** The username of the client that we are handling */
     private String userName;
 
@@ -58,10 +60,10 @@ public class SocketConnectionHandler implements Runnable
 
     /** The only type of message that we will receive */
     private ChatMessage cm;
-    
-     /** Instance of the ConfigManager component */
+
+    /** Instance of the ConfigManager component */
     ConfigManager configManager;
-    
+
     /** Object for keeping track in the logging stream of the actions performed in this socket connection */
     ServerStatistics connectionStat;
     
@@ -136,7 +138,7 @@ public class SocketConnectionHandler implements Runnable
         handleConnection = s;
         
         /** Print to the logging stream that this SSLConnectionHandler is assigned to this socket connection... */
-       SocketServerGUI.getInstance().appendEvent( "[SSEngine]:: " + handlerName + " assigned to socket (" + handleConnection.getRemoteSocketAddress() + ") (" + connectionStat.getCurrentDate() + ")\n" );
+        SocketServerGUI.getInstance().appendEvent( "[SSEngine]:: " + handlerName + " assigned to socket (" + handleConnection.getRemoteSocketAddress() + ") (" + connectionStat.getCurrentDate() + ")\n" );
 
         /** If the socket's stream writer/reader are set up correctly...then notify the thread to start working */
         if ( setSocketStreamReaderWriter() )
@@ -198,12 +200,12 @@ public class SocketConnectionHandler implements Runnable
             return false;
         }
         catch ( ClassNotFoundException cnfe )
-            {
-                /** Keep track of this exception in the logging stream... */
-                SocketServerGUI.getInstance().appendEvent( userName + " Exception reading streams:" + cnfe + "\n" );
-                
-                return false;
-            }
+        {
+            /** Keep track of this exception in the logging stream... */
+            SocketServerGUI.getInstance().appendEvent( userName + " Exception reading streams:" + cnfe + "\n" );
+
+            return false;
+        }
         catch ( OptionalDataException ode )
         {
             /** Keep track of the exception in the logging stream... */
@@ -343,7 +345,41 @@ public class SocketConnectionHandler implements Runnable
             }
         }
     }
-    
+
+    /**
+     * Verify the integrity of the message by comparing the sent hash with hashing the message with the same key
+     */
+
+    public boolean verify (String hashPart, String msgPart, SecretKeySpec serverKey) throws GeneralSecurityException {
+        byte[] msgBytes = hexToByteArray(msgPart);
+        byte[] newHash = calculateHmac(serverKey, msgBytes);
+        byte[] oldHash = hexToByteArray(hashPart);
+        return Arrays.equals(newHash, oldHash);
+    }
+
+    public String appendHashAndIvToMsg(byte[] msgCipher, SecretKeySpec serverKey, IvParameterSpec IvVector) throws GeneralSecurityException {
+        byte[] hash = calculateHmac(serverKey, msgCipher);
+        byte[] ivTobytearray = IvVector.getIV();
+        String msgCipherHash = byteArrayToHex(hash);
+        String msgCipherHex = byteArrayToHex(msgCipher);
+        String msgCipherIv = byteArrayToHex(ivTobytearray);
+        return msgCipherIv+msgCipherHex+msgCipherHash;
+    }
+
+    /**
+     * Generating a random IV vector
+     */
+
+    public IvParameterSpec generateIV () {
+        byte[] iv = new byte[16];
+        SecureRandom random = new SecureRandom();
+        random.nextBytes(iv);
+        IvParameterSpec ivParameterSpec = new IvParameterSpec(iv);
+        return ivParameterSpec;
+    }
+
+
+
     /**
      * Method for handling any data transmission/reception of the assigned socket connection. The SocketConnectionHandler retrieves
      * the stream sent by the client. Whenever,
@@ -358,10 +394,44 @@ public class SocketConnectionHandler implements Runnable
             {
                 /** Wait until there is something in the stream to be read... */
                 String msgHex = (String) socketReader.readObject();
-                byte[] msgBytesEncrypted = hexToByteArray(msgHex);
-                Cipher cipher = getCipher(Cipher.DECRYPT_MODE, getClientKey(userName));
-                byte[] msgBytes = cipher.doFinal(msgBytesEncrypted);
-                cm = (ChatMessage) convertFromBytes(msgBytes);
+                Security.addProvider(new BouncyCastleProvider());
+                try {
+                    SecretKeySpec clientKey = getClientKey(configManager.getValue("Client.Username"));
+                    Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+                    String hashPart = msgHex.substring(msgHex.length() - 128);
+                    String msgPart = msgHex.substring(32, msgHex.length() - 128);
+                    String ivPart = msgHex.substring(0, 32);
+                    System.out.println("Iv vector string: " + ivPart);
+                    byte[] ivVectorByte = hexToByteArray(ivPart);
+                    IvParameterSpec ivParameterSpec = new IvParameterSpec(ivVectorByte);
+                    cipher.init(Cipher.DECRYPT_MODE, clientKey, ivParameterSpec);
+
+                    if(verify(hashPart, msgPart, clientKey)) {
+
+                        byte[] msgBytes = hexToByteArray(msgPart);
+                        byte[] msgCipher = cipher.doFinal(msgBytes);
+                        cm = (ChatMessage) convertFromBytes(msgCipher);
+                    }
+                    else {
+                        throw new Exception("Message cannot be verified");
+                    }
+
+                } catch (NoSuchAlgorithmException e) {
+                    e.printStackTrace();
+                } catch (NoSuchPaddingException e) {
+                    e.printStackTrace();
+                } catch (BadPaddingException e) {
+                    e.printStackTrace();
+                } catch (IllegalBlockSizeException e) {
+                    e.printStackTrace();
+                } catch (InvalidKeyException e) {
+                    e.printStackTrace();
+                } catch (GeneralSecurityException e) {
+                    e.printStackTrace();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+
                 String message = cm.getMessage();
                 
 //                 Switch on the type of message receive
@@ -421,45 +491,56 @@ public class SocketConnectionHandler implements Runnable
     }
     
     /*
-    * Write a String to the Client output stream
-    *
-    * msg The string to be written to the client output stream
-    */
-   public boolean writeMsg( String msg ) 
-   {
-           // if Client is still connected send the message to it
-           if( !isSocketOpen ) 
-           {
-                /** If we finished the 'handling' of the assigned socket connection, add ourselves in the connectionHandling pool for future use */
-                socketConnectionHandlerRelease();
+     * Write a String to the Client output stream
+     *
+     * msg The string to be written to the client output stream
+     */
+    public boolean writeMsg( String msg )
+    {
+        // if Client is still connected send the message to it
+        if( !isSocketOpen )
+        {
+            /** If we finished the 'handling' of the assigned socket connection, add ourselves in the connectionHandling pool for future use */
+            socketConnectionHandlerRelease();
 
-                /** Also, inform the SocketServerEngine to remove us from the occupance pool... */
-                SocketServerEngine.getInstance().removeConnHandlerOccp( this.handlerName );
-                
-                return false;
-           }
-           // write the message to the stream
-           try 
-           {
-               //TODO: encrypt
-               Key clientKey = getClientKey(userName);
-               Cipher clientCipher = getCipher(Cipher.ENCRYPT_MODE, clientKey);
-               byte[] msgEncrypted = clientCipher.doFinal(msg.getBytes());
-               String msgEncryptedHex = byteArrayToHex(msgEncrypted);
-               System.out.println(msgEncryptedHex);
-               socketWriter.writeObject(msgEncryptedHex);
-           }
-           // if an error occurs, do not abort just inform the user
-           catch( IOException e ) 
-           {
-                SocketServerGUI.getInstance().appendEvent("Error sending message to " + userName + "\n");
-                SocketServerGUI.getInstance().appendEvent( e.toString() );
-           } catch (Exception e) {
-               e.printStackTrace();
-           }
-       return true;
-   }
-    
+            /** Also, inform the SocketServerEngine to remove us from the occupance pool... */
+            SocketServerEngine.getInstance().removeConnHandlerOccp( this.handlerName );
+
+            return false;
+        }
+        // write the message to the stream
+        try
+        {
+            //TODO: encrypt
+/*            Key clientKey = getClientKey(userName);
+            Cipher clientCipher = getCipher(Cipher.ENCRYPT_MODE, clientKey);
+            byte[] msgEncrypted = clientCipher.doFinal(msg.getBytes());
+            String msgEncryptedHex = byteArrayToHex(msgEncrypted);
+            System.out.println(msgEncryptedHex);
+            socketWriter.writeObject(msgEncryptedHex);*/
+
+            System.out.println("sending to: " + configManager.getValue("Client.Username"));
+
+            SecretKeySpec clientKey = getClientKey(configManager.getValue("Client.Username"));
+            Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+            IvParameterSpec ivParameterSpec = generateIV();
+            cipher.init(Cipher.ENCRYPT_MODE, clientKey, ivParameterSpec);
+            byte[] msgBytes = convertToBytes(msg);
+            byte[] msgCipher = cipher.doFinal(msgBytes);
+            socketWriter.writeObject(appendHashAndIvToMsg(msgCipher, clientKey, ivParameterSpec));
+
+        }
+        // if an error occurs, do not abort just inform the user
+        catch( IOException e )
+        {
+            SocketServerGUI.getInstance().appendEvent("Error sending message to " + userName + "\n");
+            SocketServerGUI.getInstance().appendEvent( e.toString() );
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return true;
+    }
+
     /**
      * Method that is called whenever a ConnectionHandler thread finished the execution of an assigned socket 
      * connection. In that case, it must add itself in the Connectionhandling pool of the SocketServerEngine component
