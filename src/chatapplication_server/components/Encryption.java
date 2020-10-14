@@ -1,17 +1,11 @@
 package chatapplication_server.components;
 
-import java.security.InvalidKeyException;
-import java.security.Key;
-import java.security.NoSuchAlgorithmException;
-import java.security.Security;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
 import javax.crypto.Cipher;
-import javax.crypto.NoSuchPaddingException;
 import javax.crypto.spec.IvParameterSpec;
-
-import static chatapplication_server.components.Helper.byteArrayToHex;
-import static chatapplication_server.components.Keys.SERVER_KEY;
+import java.security.Key;
+import java.security.Security;
 
 public class Encryption {
     public static Cipher getCipher(int mode, Key key) {

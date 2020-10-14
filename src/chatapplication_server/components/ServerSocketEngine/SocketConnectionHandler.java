@@ -9,27 +9,34 @@ import SocketActionMessages.ChatMessage;
 import chatapplication_server.components.ConfigManager;
 import chatapplication_server.components.Helper;
 import chatapplication_server.components.KeyManager;
+import chatapplication_server.components.Keys;
 import chatapplication_server.statistics.ServerStatistics;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.jcajce.provider.asymmetric.X509;
+import sun.security.x509.X509CertImpl;
 
 import java.io.*;
 import javax.crypto.*;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
+import java.math.BigInteger;
 import java.net.*;
 import java.security.Key;
+
 import javax.security.cert.CertificateException;
 import javax.security.cert.X509Certificate;
 import java.security.KeyStore;
 import java.security.PublicKey;
 import java.security.*;
+import java.security.cert.Certificate;
+import java.security.cert.CertificateFactory;
 import java.util.Arrays;
 import java.util.Vector;
 
 import static chatapplication_server.components.Encryption.getCipher;
 import static chatapplication_server.components.Helper.*;
 import static chatapplication_server.components.Keys.*;
+import static java.lang.Thread.sleep;
 
 /**
  *
@@ -156,6 +163,7 @@ public class SocketConnectionHandler implements Runnable
      */
     public boolean setSocketStreamReaderWriter()
     {
+        Security.addProvider(new BouncyCastleProvider());
         try
         {
             /** Set up the stream reader/writer for this socket connection... */
@@ -167,19 +175,86 @@ public class SocketConnectionHandler implements Runnable
             userName = ( String )socketReader.readObject();
             SocketServerGUI.getInstance().appendEvent( userName + " just connected at port number: " + handleConnection.getPort() + "\n" );
 
-            String clientCertString = (String) socketReader.readObject();
-            byte[] clientCertBytes = Helper.convertToBytes(clientCertString);
+            X509CertImpl clientCertImpl = (X509CertImpl) socketReader.readObject();
+            System.out.println(clientCertImpl.toString());
+            byte[] clientCertBytes = clientCertImpl.getEncoded();
             clientCert = X509Certificate.getInstance(clientCertBytes);
             clientCert.checkValidity();
 
-            FileInputStream is = new FileInputStream("Server/ServerKeyStore.jks");
-            KeyStore keystore = KeyStore.getInstance("Server/ServerKeyStore.jks");
-            keystore.load(is, "password".toCharArray());
+            // Server keystore with certificates
+            File keystoreFile = new File("Server/ServerKeyStore.jks");
 
-            Key CAKey = keystore.getKey("ca", "password".toCharArray());
-            clientCert.verify((PublicKey) CAKey);
+            KeyStore keystore = KeyStore.getInstance(KeyStore.getDefaultType());
+            try (InputStream in = new FileInputStream(keystoreFile)) {
+                keystore.load(in, "password".toCharArray());
+            }
 
-            System.out.println(CAKey);
+            PublicKey CAPubKey = keystore.getCertificate("ca").getPublicKey();
+            PublicKey clientPubKey = clientCert.getPublicKey();
+            clientCert.verify(CAPubKey);
+            System.out.println(CAPubKey);
+
+            // Server sends own certificate to client
+            FileInputStream fr = new FileInputStream("Server/ServersignedCA.cer");
+            CertificateFactory cf = CertificateFactory.getInstance("X509");
+            java.security.cert.X509Certificate serverSignedCert = (java.security.cert.X509Certificate) cf.generateCertificate(fr);
+            socketWriter.writeObject(serverSignedCert);
+
+
+            // Generate symmetric key and add to keystore
+            try
+            {
+                Runtime rt = Runtime.getRuntime();
+                String[] cmdArray = new String[16];
+                cmdArray[0] = "keytool";
+                cmdArray[1] = "-genseckey";
+                cmdArray[2] = "-alias";
+                cmdArray[3] = "symmetric" + userName.toLowerCase();
+                cmdArray[4] = "-keyalg";
+                cmdArray[5] = "AES";
+                cmdArray[6] = "-keysize";
+                cmdArray[7] = "192";
+                cmdArray[8] = "-keypass";
+                cmdArray[9] = "password";
+                cmdArray[10] = "-keystore";
+                cmdArray[11] = "Server/SymKeyStore.jceks";
+                cmdArray[12] = "-storepass";
+                cmdArray[13] = "password";
+                cmdArray[14] = "-storetype";
+                cmdArray[15] = "jceks";
+                Process proc = rt.exec(cmdArray);
+                proc.waitFor();
+                int exitVal = proc.exitValue();
+                System.out.println("Process exitValue: " + exitVal);
+            } catch (Throwable t)
+            {
+                t.printStackTrace();
+            }
+
+            // Server keystore with symmetric keys
+            File symKeyStoreFile = new File("Server/SymKeyStore.jceks");
+            SecretKey secKey;
+            KeyStore symkeystore = KeyStore.getInstance("JCEKS");
+            try (InputStream in = new FileInputStream(symKeyStoreFile)) {
+                symkeystore.load(in, "password".toCharArray());
+                secKey = (SecretKey) symkeystore.getKey("symmetric"+userName.toLowerCase(), "password".toCharArray());
+            }
+
+            Cipher cipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA1AndMGF1Padding");
+            cipher.init(Cipher.ENCRYPT_MODE, clientPubKey);
+
+            byte[] encryptedBytes = cipher.doFinal(new BigInteger(1, secKey.getEncoded()).toString(16).getBytes());
+
+            System.out.println(new BigInteger(1, secKey.getEncoded()).toString(16));
+            System.out.println(encryptedBytes.toString());
+            System.out.println(Helper.byteArrayToHex(encryptedBytes));
+//            socketWriter.writeObject(Helper.byteArrayToHex(encryptedBytes));
+            socketWriter.writeUTF(Helper.byteArrayToHex(encryptedBytes));
+//            socketWriter.writeObject(clientCert);
+            socketWriter.flush();
+//            socketWriter.writeBytes(Helper.byteArrayToHex(encryptedBytes));
+//            socketWriter.writeObject(Helper.byteArrayToHex("polse".getBytes()));
+            System.out.println("Symmetric key sent");
 
             return true;
         }
@@ -396,7 +471,17 @@ public class SocketConnectionHandler implements Runnable
                 String msgHex = (String) socketReader.readObject();
                 Security.addProvider(new BouncyCastleProvider());
                 try {
-                    SecretKeySpec clientKey = getClientKey(configManager.getValue("Client.Username"));
+//                    SecretKeySpec clientKey = getClientKey(configManager.getValue("Client.Username"));
+                    // Server keystore with symmetric keys
+                    File symKeyStoreFile = new File("Server/SymKeyStore.jceks");
+                    SecretKey secKey;
+                    KeyStore symkeystore = KeyStore.getInstance("JCEKS");
+                    try (InputStream in = new FileInputStream(symKeyStoreFile)) {
+                        symkeystore.load(in, "password".toCharArray());
+                        secKey = (SecretKey) symkeystore.getKey("symmetric"+userName.toLowerCase(), "password".toCharArray());
+                    }
+                    SecretKeySpec clientKey = (SecretKeySpec) secKey;
+                    System.out.println(new BigInteger(1, clientKey.getEncoded()).toString(16));
                     Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
                     String hashPart = msgHex.substring(msgHex.length() - 128);
                     String msgPart = msgHex.substring(32, msgHex.length() - 128);

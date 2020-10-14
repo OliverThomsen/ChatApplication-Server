@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.*;
 import java.security.cert.Certificate;
+import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 
@@ -47,6 +48,21 @@ public class KeyManager {
         }
 
     }
+//
+//    public void storeSymmetricKey(Key symmetricKey) throws KeyStoreException, CertificateException, NoSuchAlgorithmException, IOException {
+//        KeyStore keyStore = KeyStore.getInstance("JKECS");
+//        keyStore.load(null, null);
+//        keyStore.setKeyEntry(username, keyPair.getPrivate(), "password".toCharArray(), chain);
+//
+//        FileOutputStream fos = new FileOutputStream(username + "/" + username + "KeyStore.jks");
+//        keyStore.store(fos, "password".toCharArray());
+//
+//        File f = new File(username + "/" + username + "KeyStore.jks");
+//        while(!f.exists()) {
+//            System.out.println("Waiting for " + f.getName());
+//            sleep(1000);
+//        }
+//    }
 
     public static KeyPair generateKeyPair() throws Exception {
         KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA");
@@ -70,6 +86,13 @@ public class KeyManager {
         FileInputStream ksfis = new FileInputStream( username+"/"+keyStoreName );
         BufferedInputStream ksbufin = new BufferedInputStream( ksfis );
         ks.load( ksbufin, keyStorePass.toCharArray() );
+
+        // Create empty keystore for symmetric keys
+        KeyStore jceks = KeyStore.getInstance("JCEKS");
+        char[] password = "password".toCharArray();
+        jceks.load(null, password);
+        FileOutputStream fos = new FileOutputStream(username+"/"+"SymKeyStore.jceks");
+        jceks.store(fos, password);
 
         Certificate cert = ks.getCertificate( alias );
         ByteUtils.saveBytesToFile( username + "/" + alias + ".cer", cert.getEncoded() );

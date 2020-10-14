@@ -13,21 +13,13 @@ import chatapplication_server.components.base.GenericThreadedComponent;
 import chatapplication_server.components.base.IComponent;
 import chatapplication_server.exception.ComponentInitException;
 import chatapplication_server.statistics.ServerStatistics;
-import java.net.ServerSocket;
-import javax.crypto.BadPaddingException;
-import javax.crypto.Cipher;
-import javax.crypto.IllegalBlockSizeException;
-import javax.net.ssl.SSLServerSocket;
-import javax.net.ssl.SSLSocket;
-import java.security.Key;
-import java.util.*;
-import java.io.*;
-import java.net.*;
-import java.text.SimpleDateFormat;
 
-import static chatapplication_server.components.Encryption.getCipher;
-import static chatapplication_server.components.Helper.byteArrayToHex;
-import static chatapplication_server.components.Keys.getClientKey;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.SocketException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Vector;
 
 /**
  *

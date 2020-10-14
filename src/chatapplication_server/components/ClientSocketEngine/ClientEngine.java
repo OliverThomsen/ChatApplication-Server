@@ -9,6 +9,7 @@ import SocketActionMessages.ChatMessage;
 import chatapplication_server.ComponentManager;
 import chatapplication_server.components.CertificateAuthority;
 import chatapplication_server.components.ConfigManager;
+import chatapplication_server.components.Helper;
 import chatapplication_server.components.KeyManager;
 import chatapplication_server.components.ServerSocketEngine.SocketServerEngine;
 import chatapplication_server.components.ServerSocketEngine.SocketServerGUI;
@@ -33,7 +34,9 @@ import java.util.Scanner;
 import java.security.Security;
 //add the provider package
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.util.encoders.Base64;
 import org.w3c.dom.css.CSSUnknownRule;
+import sun.security.x509.X509CertImpl;
 
 import static chatapplication_server.components.Encryption.getCipher;
 import static chatapplication_server.components.Helper.*;
@@ -137,6 +140,8 @@ public class ClientEngine extends GenericThreadedComponent
             socketWriter = new ObjectOutputStream( socket.getOutputStream() );
             socketReader = new ObjectInputStream( socket.getInputStream() );
 
+            Security.addProvider(new BouncyCastleProvider());
+
             /** create cipher object for encryption to pass to the ListenFromServer thread */
             String username = configManager.getValue("Client.Username");
             SecretKeySpec clientKey = getClientKey(username);
@@ -163,13 +168,50 @@ public class ClientEngine extends GenericThreadedComponent
             //TODO: encrypt
             socketWriter.writeObject( configManager.getValue( "Client.Username" ) );
 
-            X509Certificate clientCert = keyManager.retrieveCertificate(configManager.getValue("Client.Username") + "/" + configManager.getValue("Client.Username") + ".cer");
+//            X509Certificate clientCert = keyManager.retrieveCertificate(configManager.getValue("Client.Username") + "/" + configManager.getValue("Client.Username") + ".cer");
             KeyManager.createPkcs10Request(configManager.getValue("Client.Username"));
             CertificateAuthority.signCSR(configManager.getValue("Client.Username"));
             KeyManager.importCACert(configManager.getValue("Client.Username"));
             KeyManager.importSignedCert(configManager.getValue("Client.Username"));
 
-            socketWriter.writeObject(clientCert);
+            X509Certificate clientSignedCert = keyManager.retrieveCertificate(configManager.getValue("Client.Username") + "/" + configManager.getValue("Client.Username") + "signedCA.cer");
+
+            System.out.println(configManager.getValue("Client.Username") + "/" + configManager.getValue("Client.Username") + "signedCA.cer");
+            System.out.println(clientSignedCert);
+            socketWriter.writeObject(clientSignedCert);
+
+//            File keystoreFile = new File(configManager.getValue("Client.Username") + "/" + configManager.getValue("Client.Username") + "KeyStore.jks");
+//
+//            KeyStore keystore = KeyStore.getInstance(KeyStore.getDefaultType());
+//            try (InputStream in = new FileInputStream(keystoreFile)) {
+//                keystore.load(in, "password".toCharArray());
+//            }
+//
+//            PrivateKey clientPrivKey = (PrivateKey) keystore.getKey(configManager.getValue("Client.Username"), "password".toCharArray());
+//
+//            Security.addProvider(new BouncyCastleProvider());
+//            Cipher cipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA1AndMGF1Padding");
+//
+//            System.out.println("Waiting for symmetric key");
+//            String encryptedSecKeyString = (String) socketReader.readUTF();
+////            X509CertImpl test = (X509CertImpl) socketReader.readObject();
+////            System.out.println(test.toString());
+//            System.out.println(encryptedSecKeyString);
+//            System.out.println("Symmetric key received");
+//            byte[] encryptedMsgBytes = hexToByteArray(encryptedSecKeyString);
+//            cipher.init(Cipher.DECRYPT_MODE, clientPrivKey);
+//            byte[] msgCipherKey = cipher.doFinal(encryptedMsgBytes);
+//            String msgKey = new String(msgCipherKey);
+//
+//            System.out.println("Client receives key string " + msgKey);
+//
+//            byte[] encodedKey = Base64.decode(msgKey);
+//
+//            SecretKey secretKey = new SecretKeySpec(encodedKey, 0, encodedKey.length, "AES");
+//
+//            System.out.println("Client received secretKey" + secretKey.toString());
+
+
         }
         catch ( IOException ioe )
         {
@@ -230,6 +272,7 @@ public class ClientEngine extends GenericThreadedComponent
 
         try {
             /** Encrypt ChatMessage before sending */
+            //TODO: Encrypt with secretkey sent by server
             SecretKeySpec clientKey = getClientKey(configManager.getValue("Client.Username"));
             Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
             IvParameterSpec ivParameterSpec = generateIV();
