@@ -18,12 +18,12 @@ public class Encryption {
         Security.addProvider(new BouncyCastleProvider());
         Cipher cipher = null;
         try {
-            cipher = Cipher.getInstance("AES");
+            cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
             if (mode == Cipher.DECRYPT_MODE) {
                 byte[] sBytes = new byte[]{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
-                cipher.init(mode, SERVER_KEY, new IvParameterSpec(sBytes));
+                cipher.init(mode, key, new IvParameterSpec(sBytes));
             } else {
-                cipher.init(mode, SERVER_KEY);
+                cipher.init(mode, key);
             }
         } catch (Exception e) {
             e.printStackTrace();
