@@ -7,6 +7,10 @@ package chatapplication_server.components.base;
 
 import chatapplication_server.exception.*;
 
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.security.UnrecoverableKeyException;
+
 /**
  * This interface is supported by all ChatApplication components that support automatic start-up and 
  * shut down by the Component Manager.
@@ -33,5 +37,5 @@ public interface IComponent
      * Method declaration of the component's main function containing the
      * main component logic.
      */
-    abstract public void componentMain();
+    abstract public void componentMain() throws KeyStoreException, UnrecoverableKeyException, NoSuchAlgorithmException;
 }

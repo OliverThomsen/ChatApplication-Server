@@ -7,9 +7,8 @@ package chatapplication_server.components.ClientSocketEngine;
 
 import SocketActionMessages.ChatMessage;
 import chatapplication_server.ComponentManager;
-import com.sun.xml.internal.bind.v2.TODO;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.bouncycastle.util.encoders.Base64;
+import sun.misc.BASE64Decoder;
 import sun.security.x509.X509CertImpl;
 
 import javax.crypto.BadPaddingException;
@@ -21,9 +20,11 @@ import javax.crypto.spec.SecretKeySpec;
 import javax.security.cert.X509Certificate;
 import java.io.*;
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.security.*;
 import java.security.cert.CertificateException;
 import java.util.Arrays;
+import java.util.Base64;
 
 import static chatapplication_server.components.Encryption.getCipher;
 import static chatapplication_server.components.Helper.*;
@@ -52,27 +53,6 @@ public class ListenFromServer extends Thread
         byte[] newHash = calculateHmac(serverKey, msgBytes);
         byte[] oldHash = hexToByteArray(hashPart);
         return Arrays.equals(newHash, oldHash);
-    }
-
-    public String appendHashAndIvToMsg(byte[] msgCipher, SecretKeySpec serverKey, IvParameterSpec IvVector) throws GeneralSecurityException {
-        byte[] hash = calculateHmac(serverKey, msgCipher);
-        byte[] ivTobytearray = IvVector.getIV();
-        String msgCipherHash = byteArrayToHex(hash);
-        String msgCipherHex = byteArrayToHex(msgCipher);
-        String msgCipherIv = byteArrayToHex(ivTobytearray);
-        return msgCipherIv+msgCipherHex+msgCipherHash;
-    }
-
-    /**
-     * Generating a random IV vector
-     */
-
-    public IvParameterSpec generateIV () {
-        byte[] iv = new byte[16];
-        SecureRandom random = new SecureRandom();
-        random.nextBytes(iv);
-        IvParameterSpec ivParameterSpec = new IvParameterSpec(iv);
-        return ivParameterSpec;
     }
 
     public void run()
@@ -125,27 +105,31 @@ public class ListenFromServer extends Thread
                             System.out.println("Waiting for symmetric key");
                             String encryptedSecKeyString = sInput.readUTF();
 
-                            System.out.println(encryptedSecKeyString);
                             System.out.println("Symmetric key received");
                             byte[] encryptedMsgBytes = hexToByteArray(encryptedSecKeyString);
                             cipher.init(Cipher.DECRYPT_MODE, clientPrivKey);
                             byte[] msgCipherKey = cipher.doFinal(encryptedMsgBytes);
-                            String msgKey = new String(msgCipherKey);
 
-                            System.out.println("Client receives key string " + msgKey);
+                            System.out.println("symkey decrypted: " + msgCipherKey.toString());
+
+                            String byteArrayToString = new String(msgCipherKey, StandardCharsets.UTF_8);
+                            byte[] decodedKey = Base64.getDecoder().decode(byteArrayToString);
+
                             System.out.println("MsgCipherKey" + msgCipherKey);
 
-                            byte[] encodedKey = Base64.decode(msgKey);
-
-                            SecretKey secretKey = new SecretKeySpec(msgCipherKey, 0, msgCipherKey.length, "AES");
+                            System.out.println("msgcipherKey length " + decodedKey.length);
+                            SecretKey secretKey = new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
                             clientKey = (SecretKeySpec) secretKey;
                             System.out.println(new BigInteger(1, clientKey.getEncoded()).toString(16));
 
                             // Server keystore with symmetric keys
-
                             KeyStore.SecretKeyEntry secret = new KeyStore.SecretKeyEntry(secretKey);
                             KeyStore.ProtectionParameter password = new KeyStore.PasswordProtection("password".toCharArray());
                             symkeystore.setEntry("server", secret, password);
+
+                            FileOutputStream in2 = new FileOutputStream(userName + "/" + "SymKeyStore.jceks");
+                            symkeystore.store(in2, "password".toCharArray());
+                            in2.close();
 
                             System.out.println(symkeystore.getKey("server","password".toCharArray()));
 

@@ -7,6 +7,10 @@ package chatapplication_server.components.base;
 
 import chatapplication_server.exception.ComponentInitException;
 
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.security.UnrecoverableKeyException;
+
 /**
  * This class serves as the basis for a multithreaded component that does NOT receive any
  * network messages. Classes that extend this class need to implement the componentMain()
@@ -63,6 +67,14 @@ public abstract class GenericThreadedComponent implements IComponent, Runnable
      */
     public void run()
     {
-        componentMain();
+        try {
+            componentMain();
+        } catch (KeyStoreException e) {
+            e.printStackTrace();
+        } catch (UnrecoverableKeyException e) {
+            e.printStackTrace();
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        }
     }  
 }

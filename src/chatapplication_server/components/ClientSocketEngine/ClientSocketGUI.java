@@ -8,8 +8,6 @@ package chatapplication_server.components.ClientSocketEngine;
 import SocketActionMessages.ChatMessage;
 import chatapplication_server.ComponentManager;
 import chatapplication_server.components.ConfigManager;
-import chatapplication_server.components.ServerSocketEngine.SocketServerEngine;
-import chatapplication_server.components.ServerSocketEngine.SocketServerGUI;
 import chatapplication_server.components.base.IComponent;
 import chatapplication_server.exception.ComponentInitException;
 import java.awt.BorderLayout;
@@ -23,7 +21,9 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.WindowEvent;
 import java.awt.event.WindowListener;
-import java.awt.event.WindowStateListener;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.security.UnrecoverableKeyException;
 import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
@@ -280,8 +280,16 @@ public class ClientSocketGUI extends JFrame implements IComponent, ActionListene
          /** If it is the logout operation... */
          if ( o == logout )
          {
-             client.sendMessage( new ChatMessage(ChatMessage.LOGOUT, "") );
-             
+             try {
+                 client.sendMessage( new ChatMessage(ChatMessage.LOGOUT, ""));
+             } catch (KeyStoreException ex) {
+                 ex.printStackTrace();
+             } catch (UnrecoverableKeyException ex) {
+                 ex.printStackTrace();
+             } catch (NoSuchAlgorithmException ex) {
+                 ex.printStackTrace();
+             }
+
              /** Disable the logout and other button */
              logout.setEnabled( false );
              whoIsIn.setEnabled( false );
@@ -295,7 +303,15 @@ public class ClientSocketGUI extends JFrame implements IComponent, ActionListene
          /** if it is the WHOISIN button... */
          if ( o == whoIsIn )
          {
-             client.sendMessage(new ChatMessage(ChatMessage.WHOISIN, ""));				
+             try {
+                 client.sendMessage(new ChatMessage(ChatMessage.WHOISIN, ""));
+             } catch (KeyStoreException ex) {
+                 ex.printStackTrace();
+             } catch (UnrecoverableKeyException ex) {
+                 ex.printStackTrace();
+             } catch (NoSuchAlgorithmException ex) {
+                 ex.printStackTrace();
+             }
              return;
          }
          /** If this is for a private chat... */
@@ -311,9 +327,17 @@ public class ClientSocketGUI extends JFrame implements IComponent, ActionListene
             String privateMsg = textPortNo.getText()+ "," + ta3.getText()+ "-" + configManager.getValue( "Client.Username" ) +"-#";
             System.out.println("2nd window : "+ privateMsg );
 
-            client.sendMessage(new ChatMessage(ChatMessage.PRIVATEMESSAGE, privateMsg));
+             try {
+                 client.sendMessage(new ChatMessage(ChatMessage.PRIVATEMESSAGE, privateMsg));
+             } catch (KeyStoreException ex) {
+                 ex.printStackTrace();
+             } catch (UnrecoverableKeyException ex) {
+                 ex.printStackTrace();
+             } catch (NoSuchAlgorithmException ex) {
+                 ex.printStackTrace();
+             }
 
-            return;
+             return;
          }
          
          /** P2P Chat Window */
