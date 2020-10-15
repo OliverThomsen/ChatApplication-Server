@@ -83,6 +83,7 @@ public class ListenFromServer extends Thread
 
                     try
                     {
+                        // client receives the server certificate and validates it, if already received this is skipped
                         if (!receivedCertFromServer) {
                             X509CertImpl serverCertImpl = (X509CertImpl) sInput.readObject();
                             System.out.println(serverCertImpl.toString());
@@ -91,6 +92,7 @@ public class ListenFromServer extends Thread
                             clientCert.checkValidity();
                             receivedCertFromServer = true;
                         }
+                        // client receives the symmetric key, decrypts it with its own private key and stores it in a symmetric key store
                         else if (!receivedServerSecKey) {
                             File keystoreFile = new File(userName + "/" + userName + "KeyStore.jks");
 

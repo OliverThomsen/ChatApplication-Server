@@ -284,10 +284,6 @@ public class ClientSocketGUI extends JFrame implements IComponent, ActionListene
                  client.sendMessage( new ChatMessage(ChatMessage.LOGOUT, ""));
              } catch (KeyStoreException ex) {
                  ex.printStackTrace();
-             } catch (UnrecoverableKeyException ex) {
-                 ex.printStackTrace();
-             } catch (NoSuchAlgorithmException ex) {
-                 ex.printStackTrace();
              }
 
              /** Disable the logout and other button */
@@ -306,10 +302,6 @@ public class ClientSocketGUI extends JFrame implements IComponent, ActionListene
              try {
                  client.sendMessage(new ChatMessage(ChatMessage.WHOISIN, ""));
              } catch (KeyStoreException ex) {
-                 ex.printStackTrace();
-             } catch (UnrecoverableKeyException ex) {
-                 ex.printStackTrace();
-             } catch (NoSuchAlgorithmException ex) {
                  ex.printStackTrace();
              }
              return;
@@ -330,10 +322,6 @@ public class ClientSocketGUI extends JFrame implements IComponent, ActionListene
              try {
                  client.sendMessage(new ChatMessage(ChatMessage.PRIVATEMESSAGE, privateMsg));
              } catch (KeyStoreException ex) {
-                 ex.printStackTrace();
-             } catch (UnrecoverableKeyException ex) {
-                 ex.printStackTrace();
-             } catch (NoSuchAlgorithmException ex) {
                  ex.printStackTrace();
              }
 
