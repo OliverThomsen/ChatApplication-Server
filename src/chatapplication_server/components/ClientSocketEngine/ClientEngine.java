@@ -92,7 +92,7 @@ public class ClientEngine extends GenericThreadedComponent
      * 
      * @see IComponent interface.
      */
-    public void initialize() throws ComponentInitException
+    public void initialize(KeyManager keyManager) throws ComponentInitException
     {
         /** Get the running instance of the Configuration Manager component */
         configManager = ConfigManager.getInstance();
@@ -100,15 +100,6 @@ public class ClientEngine extends GenericThreadedComponent
         /** For printing the configuration properties of the secure socket server */
         lotusStat = new ServerStatistics();
 
-        /** Initialise keystore and certificate for client user
-         *
-         */
-
-        try {
-            keyManager = new KeyManager(configManager.getValue("Client.Username"));
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
 
         /** Try and connect to the server... */
         try
@@ -162,8 +153,7 @@ public class ClientEngine extends GenericThreadedComponent
             CertificateAuthority.signCSR(configManager.getValue("Client.Username"));
             KeyManager.importCACert(configManager.getValue("Client.Username"));
             KeyManager.importSignedCert(configManager.getValue("Client.Username"));
-            String path = configManager.getValue("Client.Username") + "/" + configManager.getValue("Client.Username") + "signedCA.cer";
-            X509Certificate clientSignedCert = keyManager.retrieveCertificate(path);
+            X509Certificate clientSignedCert = keyManager.retrieveOwnCertificate();
 
             System.out.println(configManager.getValue("Client.Username") + "/" + configManager.getValue("Client.Username") + "signedCA.cer");
             System.out.println(clientSignedCert);

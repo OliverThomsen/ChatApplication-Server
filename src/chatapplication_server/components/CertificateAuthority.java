@@ -3,12 +3,11 @@ package chatapplication_server.components;
 import sun.security.x509.*;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.math.BigInteger;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.security.PrivateKey;
-import java.security.SecureRandom;
+import java.security.*;
+import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.Date;
 
@@ -69,7 +68,7 @@ public class CertificateAuthority {
     }
 
     public static void signCSR(String username) throws Exception {
-        sleep(5000);
+//        sleep(5000);/
         String pathtoUser = username + "/";
         String cmd = "openssl x509 -CA CA/caroot.cer -CAkey CA/cakey.pem -CAserial CA/serial.txt -req -in " + pathtoUser + username + ".csr" + " -out " + pathtoUser + username + "signedCA.cer" + " -days 365 -passin pass:password";
         System.out.println(cmd);
@@ -82,5 +81,15 @@ public class CertificateAuthority {
         }
     }
 
-
+    public static PublicKey getCAPubKey() {
+        try {
+            FileInputStream fr = new FileInputStream("CA/caroot.cer");
+            CertificateFactory cf = CertificateFactory.getInstance("X509");
+            X509Certificate c = (X509Certificate) cf.generateCertificate(fr);
+            return c.getPublicKey();
+        } catch(Exception e) {
+            System.out.println(e);
+        }
+        return null;
+    }
 }

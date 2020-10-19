@@ -1,5 +1,8 @@
 package chatapplication_server.components;
 
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -74,7 +77,8 @@ public class KeyManager {
         return keyPair.getPublic();
     }
 
-    public X509Certificate retrieveCertificate(String path) throws Exception {
+    public X509Certificate retrieveOwnCertificate() throws Exception {
+        String path = username + "/" + username + "signedCA.cer";
         FileInputStream fr = new FileInputStream(path);
         CertificateFactory cf = CertificateFactory.getInstance("X509");
         return (X509Certificate) cf.generateCertificate(fr);
@@ -174,4 +178,18 @@ public class KeyManager {
         folder.delete();
     }
 
+    public SecretKey generateRandomKey() {
+        KeyGenerator keyGen = null;
+        try {
+            keyGen = KeyGenerator.getInstance("AES");
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        }
+        keyGen.init(256);
+        return keyGen.generateKey();
+    }
+
+    public Key getPrivateKey() {
+        return keyPair.getPrivate();
+    }
 }

@@ -8,6 +8,7 @@ package chatapplication_server.components.ClientSocketEngine;
 import SocketActionMessages.ChatMessage;
 import chatapplication_server.ComponentManager;
 import chatapplication_server.components.ConfigManager;
+import chatapplication_server.components.KeyManager;
 import chatapplication_server.components.base.IComponent;
 import chatapplication_server.exception.ComponentInitException;
 import java.awt.BorderLayout;
@@ -62,12 +63,13 @@ public class ClientSocketGUI extends JFrame implements IComponent, ActionListene
     private JTextArea ta;
     private JTextArea ta2,ta3;
     private JFrame f;
-    
-     /**
+
+    /**
      * Singleton instance of the SocketServerEngine component
      */
     private static ClientSocketGUI componentInstance = null;
-    
+    private KeyManager keyManager;
+
     /**
      * Creates a new instance of SocketServerEngine
      */
@@ -331,7 +333,7 @@ public class ClientSocketGUI extends JFrame implements IComponent, ActionListene
          /** P2P Chat Window */
          if ( o == p2pClient )
          {
-             P2PClient p2p = new P2PClient();
+             P2PClient p2p = new P2PClient(this.keyManager);
          }
          
          /** If this is a login operation... */
@@ -382,14 +384,21 @@ public class ClientSocketGUI extends JFrame implements IComponent, ActionListene
             tfPort.setEditable(false);
             // Action listener for when the user enter a message
             tf.addActionListener(this);
-            
-            client.initialize();
+
+
+            // Create keyManager
+            this.keyManager = new KeyManager(configManager.getValue("Client.Username"));
+
+            client.initialize(this.keyManager);
             }
             catch ( ComponentInitException ie )
             {
                 /** Safely shut down the system */
                 ComponentManager.getInstance().fatalException( ie );
             }
+           catch (Exception exception) {
+               System.out.println(exception);
+           }
          }
      }
      

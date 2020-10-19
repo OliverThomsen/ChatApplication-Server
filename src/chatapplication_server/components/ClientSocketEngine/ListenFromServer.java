@@ -8,7 +8,6 @@ package chatapplication_server.components.ClientSocketEngine;
 import SocketActionMessages.ChatMessage;
 import chatapplication_server.ComponentManager;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import sun.misc.BASE64Decoder;
 import sun.security.x509.X509CertImpl;
 
 import javax.crypto.BadPaddingException;

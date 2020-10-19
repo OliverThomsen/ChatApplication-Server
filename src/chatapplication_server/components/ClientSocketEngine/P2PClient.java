@@ -7,14 +7,20 @@ package chatapplication_server.components.ClientSocketEngine;
 
 import SocketActionMessages.ChatMessage;
 import chatapplication_server.components.ConfigManager;
+import chatapplication_server.components.KeyManager;
+
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.GridLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.io.File;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import javax.crypto.*;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
@@ -26,8 +32,16 @@ import javax.swing.SwingConstants;
 import javax.swing.WindowConstants;
 
 import java.net.*;
+import java.security.*;
+import java.security.cert.X509Certificate;
+import java.util.Arrays;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import chatapplication_server.components.CertificateAuthority;
+
+import static chatapplication_server.components.Helper.*;
+import static chatapplication_server.components.Helper.hexToByteArray;
+import static chatapplication_server.components.Keys.calculateHmac;
 
 /**
  *
@@ -37,6 +51,7 @@ public class P2PClient extends JFrame implements ActionListener
 {
     private String host;
     private String port;
+    private String userName;
     private final JTextField tfServer;
     private final JTextField tfPort;
     private final JTextField tfsPort;
@@ -59,10 +74,23 @@ public class P2PClient extends JFrame implements ActionListener
     /** Flag indicating whether another client is connected to the Socket Server... */
     boolean isConnected;
 
-    P2PClient(){
+    /** Flag indicating if this client initiated the handshake*/
+    private boolean isInitiator;
+
+    private KeyManager keyManager;
+
+    private Key symmetricKey;
+
+    X509Certificate friendCert;
+    private String firstMessage;
+
+
+    P2PClient(KeyManager keyManager){
         super("P2P Client Chat");
         host=ConfigManager.getInstance().getValue( "Server.Address" );
         port=ConfigManager.getInstance().getValue( "Server.PortNumber" );
+        userName = ConfigManager.getInstance().getValue( "Client.Username" );
+        this.keyManager = keyManager;
 
         // The NorthPanel with:
         JPanel northPanel = new JPanel(new GridLayout(3,1));
@@ -157,16 +185,32 @@ public class P2PClient extends JFrame implements ActionListener
         else if ( o == Send )
         {
             /** Try to send the message to the other communicating party, if we have been connected... */
-            if ( isConnected == true )
+            if ( isConnected && symmetricKey != null )
             {
-                this.send( tf.getText() );
+                try {
+                    this.send(tf.getText());
+                } catch(Exception exception) {
+                    exception.printStackTrace();
+                }
+            }
+            // Symmetric key not established. Initiate handshake by sharing own certificate
+            else if (isConnected && symmetricKey == null) {
+                try {
+                    this.isInitiator = true;
+                    X509Certificate myCertificate = keyManager.retrieveOwnCertificate();
+                    this.send(myCertificate);
+                    // Save message for later
+                    this.firstMessage = tf.getText();
+                } catch(Exception exception) {
+                    exception.printStackTrace();
+                }
             }
         }
         else if(o == stopStart)
         {
             if ( stopStart.getText().equals( "Start" ) && isRunning == false)
             {
-                clientServer = new ListenFromClient();
+                clientServer = new ListenFromClient(keyManager);
                 clientServer.start();
                 isRunning = true;
                 stopStart.setText( "Stop" );
@@ -179,6 +223,50 @@ public class P2PClient extends JFrame implements ActionListener
                 stopStart.setText( "Start" );
             }
         }
+    }
+
+    public String decrypt(String cipherText, Key key) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidAlgorithmParameterException, InvalidKeyException, IOException, BadPaddingException, IllegalBlockSizeException {
+        Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+        String iv = cipherText.substring(0,32);
+        String msgCipher = cipherText.substring(32);
+        IvParameterSpec ivParameterSpec = new IvParameterSpec(hexToByteArray(iv));
+        cipher.init(Cipher.DECRYPT_MODE, key, ivParameterSpec);
+        byte[] plainText = cipher.doFinal(hexToByteArray(msgCipher));
+        return new String(plainText);
+    }
+
+    public String encrypt(String message, Key key) throws InvalidAlgorithmParameterException, InvalidKeyException, IOException, BadPaddingException, IllegalBlockSizeException, NoSuchPaddingException, NoSuchAlgorithmException {
+        Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+        IvParameterSpec ivParameterSpec = generateIV();
+        cipher.init(Cipher.ENCRYPT_MODE, key, ivParameterSpec);
+        byte[] msgBytes = convertToBytes(message);
+        byte[] msgCipher = cipher.doFinal(msgBytes);
+        byte[] iv = ivParameterSpec.getIV();
+        return byteArrayToHex(iv) + byteArrayToHex(msgCipher);
+    }
+
+    public byte[] encryptRSA(byte[] cipherText, Key key) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, BadPaddingException, IllegalBlockSizeException {
+        Cipher cipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA1AndMGF1Padding");
+        cipher.init(Cipher.ENCRYPT_MODE, key);
+        return cipher.doFinal(cipherText);
+    }
+
+    public byte[] decryptRSA(byte[] plainText, Key key) throws BadPaddingException, IllegalBlockSizeException, InvalidKeyException, NoSuchPaddingException, NoSuchAlgorithmException {
+        Cipher cipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA1AndMGF1Padding");
+        cipher.init(Cipher.DECRYPT_MODE, key);
+        return cipher.doFinal(plainText);
+    }
+
+    /**
+     * Generating a random IV vector
+     */
+
+    public IvParameterSpec generateIV () {
+        byte[] iv = new byte[16];
+        SecureRandom random = new SecureRandom();
+        random.nextBytes(iv);
+        IvParameterSpec ivParameterSpec = new IvParameterSpec(iv);
+        return ivParameterSpec;
     }
 
     public void display(String str) {
@@ -266,31 +354,48 @@ public class P2PClient extends JFrame implements ActionListener
         return true;
     }
 
-    public boolean send(String str)
+    public boolean send(String msg)
     {
         try {
-            sOutput.writeObject(new ChatMessage(str.length(), str));
-            display("You: " + str);
-            //sOutput.close();
-            //socket.close();
+            String cipherText = encrypt(msg, symmetricKey);
+            sOutput.writeObject(new ChatMessage(cipherText.length(), cipherText));
+            display("You: " + msg);
         } catch (IOException ex) {
             display("The Client's Server Socket was closed!!\nException creating output stream: " + ex.getMessage());
             this.disconnect();
             return false;
+        } catch (Exception e) {
+            e.printStackTrace();
         }
 
         return true;
     }
 
+    public boolean send(Object obj) {
+        try {
+            sOutput.writeObject(obj);
+        } catch(Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+        return true;
+    }
+
+    public void setSymmetricKey(SecretKey key) {
+        this.symmetricKey = key;
+    }
+
     private class ListenFromClient extends Thread
     {
+        private final KeyManager keyManager;
         ServerSocket serverSocket;
         Socket socket;
         ObjectInputStream sInput = null;
         boolean clientConnect;
 
-        public ListenFromClient()
+        public ListenFromClient(KeyManager keyManager)
         {
+            this.keyManager = keyManager;
             try
             {
                 // the socket used by the server
@@ -327,22 +432,75 @@ public class P2PClient extends JFrame implements ActionListener
                     display("The Socket Server was closed: " + ex.getMessage());
                 }
 
-                // format message saying we are waiting
-                try {
-                    String msg = ((ChatMessage) sInput.readObject()).getMessage();
-                    System.out.println("Msg:"+msg);
-                    display(socket.getInetAddress()+": " + socket.getPort() + ": " + msg);
-                    //sInput.close();
-                    //socket.close();
+                // Clients have established symmetric key
+                if(symmetricKey != null) {
+                    try {
+                        String cipherText = ((ChatMessage) sInput.readObject()).getMessage();
+                        String msg = decrypt(cipherText, symmetricKey);
+                        display(socket.getInetAddress()+": " + socket.getPort() + ": " + msg);
+                        //sInput.close();
+                        //socket.close();
+                    }
+                    catch (IOException ex)
+                    {
+                        display("Could not ready correctly the messages from the connected client: " + ex.getMessage());
+                        clientConnect = false;
+                    }
+                    catch (ClassNotFoundException ex) {
+                        Logger.getLogger(P2PClient.class.getName()).log(Level.SEVERE, null, ex);
+                    }
+                    catch (Exception exception) {
+                        exception.printStackTrace();
+                    }
                 }
-                catch (IOException ex)
-                {
-                    display("Could not ready correctly the messages from the connected client: " + ex.getMessage());
-                    clientConnect = false;
+
+                // Clients do not have a symmetric key yet
+                else {
+                    try {
+                        // Expect to receive certificate of friend
+                        if (friendCert == null) {
+                            friendCert = (X509Certificate) sInput.readObject();
+                            System.out.println(friendCert);
+                            friendCert.checkValidity();
+                            friendCert.verify(CertificateAuthority.getCAPubKey());
+
+                            // If user is initiator of handshake generate symmetric key and send to friend
+                            if (isInitiator) {
+                                SecretKey key = keyManager.generateRandomKey();
+                                setSymmetricKey(key);
+                                // Sign key with privateKey
+//                                byte[] signedKey = encryptRSA(key.getEncoded(), keyManager.getPrivateKey());
+                                // Encrypt symmetric key with pubKey of friends
+                                byte[] encryptedSignedKey = encryptRSA(key.getEncoded(), friendCert.getPublicKey());
+                                sOutput.writeObject(byteArrayToHex(encryptedSignedKey));
+                                send(firstMessage);
+
+                            }
+                            // If the user is not the initiator send own certificate
+                            else {
+                                X509Certificate myCertificate = keyManager.retrieveOwnCertificate();
+                                send(myCertificate);
+                            }
+
+                        }
+                        // Expect to receive symmetric key
+                        else {
+                            String encryptedSignedKey = (String) sInput.readObject();
+                            // Decrypt symmetric key with own private key
+                            byte[] signedKey = decryptRSA(hexToByteArray(encryptedSignedKey), keyManager.getPrivateKey());
+                            // Verify key with public key of friend
+                            PublicKey publicKey = friendCert.getPublicKey();
+//                            byte[] keyVerified = decryptRSA(hexToByteArray(encryptedSignedKey), publicKey);
+                            SecretKey secretKey = new SecretKeySpec(signedKey, 0, signedKey.length, "AES");
+                            setSymmetricKey(secretKey);
+                        }
+
+
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
                 }
-                catch (ClassNotFoundException ex) {
-                    Logger.getLogger(P2PClient.class.getName()).log(Level.SEVERE, null, ex);
-                }
+
             }
         }
 
